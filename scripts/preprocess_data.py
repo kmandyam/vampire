@@ -49,6 +49,8 @@ def main():
                         help="Path to store the preprocessed corpus vocabulary (output file name).") 
     parser.add_argument("--reference-tokenizer-type", type=str, default="just_spaces",
                         help="Path to store the preprocessed corpus vocabulary (output file name).")
+    parser.add_argument("--preprocess-covariates", type=bool, default=True,
+                        help="Whether we want to preprocess the metadata associated with each example")
     args = parser.parse_args()
 
     if not os.path.isdir(args.serialization_dir):
@@ -61,6 +63,10 @@ def main():
 
     tokenized_train_examples = load_data(args.train_path)
     tokenized_dev_examples = load_data(args.dev_path)
+
+    if args.preprocess_covariates:
+        tokenized_train_covariates = load_data(args.train_path)
+        tokenized_dev_covariates = load_data(args.dev_path)
 
     print("fitting count vectorizer...")
     if args.tfidf:
