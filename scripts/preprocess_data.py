@@ -1,7 +1,7 @@
 import argparse
 import json
 import os
-from typing import List
+from typing import List, Tuple
 
 import nltk
 import numpy as np
@@ -14,9 +14,13 @@ from tqdm import tqdm
 
 from vampire.common.util import read_text, save_sparse, write_to_json
 
+METADATA = ['in_reply_to_status_id_str', 'in_reply_to_status_id', 'lang', 'source', 'in_reply_to_user_id_str',
+            'in_reply_to_screen_name', 'favorited', 'created_at', 'is_quote_status', 'in_reply_to_user_id',
+            'contributors', 'retweeted', 'place', 'favorite_count', 'retweet_count', 'truncated']
 
-def load_data(data_path: str) -> List[str]:
+def load_data(data_path: str, load_covars=False) -> Tuple[List[str], List[str]]:
     tokenized_examples = []
+    tokenized_covars = []
     with tqdm(open(data_path, "r"), desc=f"loading {data_path}") as f:
         for line in f:
             if data_path.endswith(".jsonl") or data_path.endswith(".json"):
@@ -25,7 +29,12 @@ def load_data(data_path: str) -> List[str]:
                 example = {"text": line}
             text = example['text']
             tokenized_examples.append(text)
-    return tokenized_examples
+            if load_covars:
+                covariates = []
+                for c in METADATA:
+                    covariates.append(example[c])
+                tokenized_covars.append(' '.join(covariates))
+    return tokenized_examples, tokenized_covars
 
 def main():
     parser = argparse.ArgumentParser(formatter_class = argparse.ArgumentDefaultsHelpFormatter)
@@ -61,12 +70,12 @@ def main():
     if not os.path.isdir(vocabulary_dir):
         os.mkdir(vocabulary_dir)
 
-    tokenized_train_examples = load_data(args.train_path)
-    tokenized_dev_examples = load_data(args.dev_path)
+    tokenized_train_examples, _ = load_data(args.train_path, load_covars=False)
+    tokenized_dev_examples, _ = load_data(args.dev_path, load_covars=False)
 
     if args.preprocess_covariates:
-        tokenized_train_covariates = load_data(args.train_path)
-        tokenized_dev_covariates = load_data(args.dev_path)
+        tokenized_train_examples, tokenized_train_covariates = load_data(args.train_path, load_covars=True)
+        tokenized_dev_examples, tokenized_dev_covariates = load_data(args.dev_path, load_covars=True)
 
     print("fitting count vectorizer...")
     if args.tfidf:
