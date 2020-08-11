@@ -80,30 +80,51 @@ def main():
     print("fitting count vectorizer...")
     if args.tfidf:
         count_vectorizer = TfidfVectorizer(stop_words='english', max_features=args.vocab_size, token_pattern=r'\b[^\d\W]{3,30}\b')
+        covar_vectorizer = TfidfVectorizer(stop_words='english', max_features=args.vocab_size,
+                                           token_pattern=r'\b[^\d\W]{3,30}\b')
     else:
         count_vectorizer = CountVectorizer(stop_words='english', max_features=args.vocab_size, token_pattern=r'\b[^\d\W]{3,30}\b')
+        covar_vectorizer = CountVectorizer(stop_words='english', max_features=args.vocab_size,
+                                           token_pattern=r'\b[^\d\W]{3,30}\b')
     
     text = tokenized_train_examples + tokenized_dev_examples
-    
+
     count_vectorizer.fit(tqdm(text))
 
     vectorized_train_examples = count_vectorizer.transform(tqdm(tokenized_train_examples))
     vectorized_dev_examples = count_vectorizer.transform(tqdm(tokenized_dev_examples))
 
+    if args.preprocess_covariates:
+        covar_text = tokenized_train_covariates + tokenized_dev_covariates
+
+        covar_vectorizer.fit(tqdm(covar_text))
+
+        vectorized_train_covariates = covar_vectorizer.transform(tqdm(tokenized_train_covariates))
+        vectorized_dev_covariates = covar_vectorizer.transform(tqdm(tokenized_dev_covariates))
+
     if args.tfidf:
         reference_vectorizer = TfidfVectorizer(stop_words='english', token_pattern=r'\b[^\d\W]{3,30}\b')
+        reference_covariate_vectorizer = TfidfVectorizer(stop_words='english', token_pattern=r'\b[^\d\W]{3,30}\b')
     else:
         reference_vectorizer = CountVectorizer(stop_words='english', token_pattern=r'\b[^\d\W]{3,30}\b')
+        reference_covariate_vectorizer = CountVectorizer(stop_words='english', token_pattern=r'\b[^\d\W]{3,30}\b')
     if not args.reference_corpus_path:
         print("fitting reference corpus using development data...")
         reference_matrix = reference_vectorizer.fit_transform(tqdm(tokenized_dev_examples))
+        print("fitting reference corpus covariates using development data")
+        if args.preprocess_covariates:
+            reference_covariate_matrix = reference_covariate_vectorizer.fit_transform(tqdm(tokenized_dev_covariates))
     else:
         print(f"loading reference corpus at {args.reference_corpus_path}...")
         reference_examples = load_data(args.reference_corpus_path, args.tokenize_reference, args.reference_tokenizer_type)
         print("fitting reference corpus...")
         reference_matrix = reference_vectorizer.fit_transform(tqdm(reference_examples))
+        if args.preprocess_covariates:
+            reference_covariate_matrix = reference_covariate_vectorizer.fit_transform(tqdm(tokenized_dev_covariates))
 
     reference_vocabulary = reference_vectorizer.get_feature_names()
+    if args.preprocess_covariates:
+        reference_covariate_vocabulary = reference_covariate_vectorizer.get_feature_names()
 
     # add @@unknown@@ token vector
     vectorized_train_examples = sparse.hstack((np.array([0] * len(tokenized_train_examples))[:,None], vectorized_train_examples))
