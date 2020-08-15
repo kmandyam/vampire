@@ -154,15 +154,33 @@ def main():
     print("saving data...")
     save_sparse(vectorized_train_examples, os.path.join(args.serialization_dir, "train.npz"))
     save_sparse(vectorized_dev_examples, os.path.join(args.serialization_dir, "dev.npz"))
+
+    if args.preprocess_covariates:
+        save_sparse(vectorized_train_covariates, os.path.join(args.serialization_dir, "train.covar.npz"))
+        save_sparse(vectorized_dev_covariates, os.path.join(args.serialization_dir, "dev.covar.npz"))
+
     if not os.path.isdir(os.path.join(args.serialization_dir, "reference")):
         os.mkdir(os.path.join(args.serialization_dir, "reference"))
     save_sparse(reference_matrix, os.path.join(args.serialization_dir, "reference", "ref.npz"))
+
     write_to_json(reference_vocabulary, os.path.join(args.serialization_dir, "reference", "ref.vocab.json"))
     write_to_json(bgfreq, os.path.join(args.serialization_dir, "vampire.bgfreq"))
 
+    if args.preprocess_covariates:
+        write_to_json(reference_covariate_vocabulary, os.path.join(args.serialization_dir, "reference", "ref.vocab.covar.json"))
+        write_to_json(covar_bgfreq, os.path.join(args.serialization_dir, "covar.bgfreq"))
+
     write_list_to_file(['@@UNKNOWN@@'] + count_vectorizer.get_feature_names(),
                        os.path.join(vocabulary_dir, "vampire.txt"))
-    write_list_to_file(['*tags', '*labels', 'vampire'], os.path.join(vocabulary_dir, "non_padded_namespaces.txt"))
+
+    if args.preprocess_covariates:
+        write_list_to_file(['@@UNKNOWN@@'] + covar_vectorizer.get_feature_names(),
+                           os.path.join(vocabulary_dir, "covariates.txt"))
+
+    if args.preprocess_covariates:
+        write_list_to_file(['*tags', '*labels', 'vampire', 'covariates'], os.path.join(vocabulary_dir, "non_padded_namespaces.txt"))
+    else:
+        write_list_to_file(['*tags', '*labels', 'vampire'], os.path.join(vocabulary_dir, "non_padded_namespaces.txt"))
 
 def write_list_to_file(ls, save_path):
     """
