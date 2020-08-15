@@ -37,7 +37,7 @@ def load_data(data_path: str, load_covars=False) -> Tuple[List[str], List[str]]:
     return tokenized_examples, tokenized_covars
 
 def main():
-    parser = argparse.ArgumentParser(formatter_class = argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--train-path", type=str, required=True,
                         help="Path to the train jsonl file.")
     parser.add_argument("--dev-path", type=str, required=True,
@@ -45,17 +45,17 @@ def main():
     parser.add_argument("--serialization-dir", "-s", type=str, required=True,
                         help="Path to store the preprocessed output.")
     parser.add_argument("--tfidf", action='store_true',
-                        help="use TFIDF as input") 
+                        help="use TFIDF as input")
     parser.add_argument("--vocab-size", type=int, required=False, default=10000,
                         help="Path to store the preprocessed corpus vocabulary (output file name).")
     parser.add_argument("--tokenize", action='store_true',
-                        help="Path to store the preprocessed corpus vocabulary (output file name).") 
+                        help="Path to store the preprocessed corpus vocabulary (output file name).")
     parser.add_argument("--tokenizer-type", type=str, default="just_spaces",
                         help="Path to store the preprocessed corpus vocabulary (output file name).")
     parser.add_argument("--reference-corpus-path", type=str, required=False,
                         help="Path to store the preprocessed corpus vocabulary (output file name).")
     parser.add_argument("--tokenize-reference", action='store_true',
-                        help="Path to store the preprocessed corpus vocabulary (output file name).") 
+                        help="Path to store the preprocessed corpus vocabulary (output file name).")
     parser.add_argument("--reference-tokenizer-type", type=str, default="just_spaces",
                         help="Path to store the preprocessed corpus vocabulary (output file name).")
     parser.add_argument("--preprocess-covariates", type=bool, default=True,
@@ -64,7 +64,7 @@ def main():
 
     if not os.path.isdir(args.serialization_dir):
         os.mkdir(args.serialization_dir)
-    
+
     vocabulary_dir = os.path.join(args.serialization_dir, "vocabulary")
 
     if not os.path.isdir(vocabulary_dir):
@@ -79,14 +79,16 @@ def main():
 
     print("fitting count vectorizer...")
     if args.tfidf:
-        count_vectorizer = TfidfVectorizer(stop_words='english', max_features=args.vocab_size, token_pattern=r'\b[^\d\W]{3,30}\b')
+        count_vectorizer = TfidfVectorizer(stop_words='english', max_features=args.vocab_size,
+                                           token_pattern=r'\b[^\d\W]{3,30}\b')
         covar_vectorizer = TfidfVectorizer(stop_words='english', max_features=args.vocab_size,
                                            token_pattern=r'\b[^\d\W]{3,30}\b')
     else:
-        count_vectorizer = CountVectorizer(stop_words='english', max_features=args.vocab_size, token_pattern=r'\b[^\d\W]{3,30}\b')
+        count_vectorizer = CountVectorizer(stop_words='english', max_features=args.vocab_size,
+                                           token_pattern=r'\b[^\d\W]{3,30}\b')
         covar_vectorizer = CountVectorizer(stop_words='english', max_features=args.vocab_size,
                                            token_pattern=r'\b[^\d\W]{3,30}\b')
-    
+
     text = tokenized_train_examples + tokenized_dev_examples
 
     count_vectorizer.fit(tqdm(text))
@@ -116,7 +118,8 @@ def main():
             reference_covariate_matrix = reference_covariate_vectorizer.fit_transform(tqdm(tokenized_dev_covariates))
     else:
         print(f"loading reference corpus at {args.reference_corpus_path}...")
-        reference_examples = load_data(args.reference_corpus_path, args.tokenize_reference, args.reference_tokenizer_type)
+        reference_examples = load_data(args.reference_corpus_path, args.tokenize_reference,
+                                       args.reference_tokenizer_type)
         print("fitting reference corpus...")
         reference_matrix = reference_vectorizer.fit_transform(tqdm(reference_examples))
         if args.preprocess_covariates:
@@ -127,13 +130,26 @@ def main():
         reference_covariate_vocabulary = reference_covariate_vectorizer.get_feature_names()
 
     # add @@unknown@@ token vector
-    vectorized_train_examples = sparse.hstack((np.array([0] * len(tokenized_train_examples))[:,None], vectorized_train_examples))
-    vectorized_dev_examples = sparse.hstack((np.array([0] * len(tokenized_dev_examples))[:,None], vectorized_dev_examples))
+    vectorized_train_examples = sparse.hstack(
+        (np.array([0] * len(tokenized_train_examples))[:, None], vectorized_train_examples))
+    vectorized_dev_examples = sparse.hstack(
+        (np.array([0] * len(tokenized_dev_examples))[:, None], vectorized_dev_examples))
     master = sparse.vstack([vectorized_train_examples, vectorized_dev_examples])
+
+    if args.preprocess_covariates:
+        vectorized_train_covariates = sparse.hstack(
+            (np.array([0] * len(tokenized_train_covariates))[:, None], vectorized_train_covariates))
+        vectorized_dev_covariates = sparse.hstack(
+            (np.array([0] * len(tokenized_dev_covariates))[:, None], vectorized_dev_covariates))
+        covar_master = sparse.vstack([vectorized_train_covariates, vectorized_dev_covariates])
 
     # generate background frequency
     print("generating background frequency...")
     bgfreq = dict(zip(count_vectorizer.get_feature_names(), (np.array(master.sum(0)) / args.vocab_size).squeeze()))
+
+    if args.preprocess_covariates:
+        covar_bgfreq = dict(
+            zip(covar_vectorizer.get_feature_names(), (np.array(covar_master.sum(0)) / args.vocab_size).squeeze()))
 
     print("saving data...")
     save_sparse(vectorized_train_examples, os.path.join(args.serialization_dir, "train.npz"))
@@ -143,8 +159,9 @@ def main():
     save_sparse(reference_matrix, os.path.join(args.serialization_dir, "reference", "ref.npz"))
     write_to_json(reference_vocabulary, os.path.join(args.serialization_dir, "reference", "ref.vocab.json"))
     write_to_json(bgfreq, os.path.join(args.serialization_dir, "vampire.bgfreq"))
-    
-    write_list_to_file(['@@UNKNOWN@@'] + count_vectorizer.get_feature_names(), os.path.join(vocabulary_dir, "vampire.txt"))
+
+    write_list_to_file(['@@UNKNOWN@@'] + count_vectorizer.get_feature_names(),
+                       os.path.join(vocabulary_dir, "vampire.txt"))
     write_list_to_file(['*tags', '*labels', 'vampire'], os.path.join(vocabulary_dir, "non_padded_namespaces.txt"))
 
 def write_list_to_file(ls, save_path):
