@@ -72,11 +72,13 @@ class VampireReader(DatasetReader):
                  lazy: bool = False,
                  sample: int = None,
                  array_conversion_batch_size: int = 10000,
-                 min_sequence_length: int = 0) -> None:
+                 min_sequence_length: int = 0,
+                 load_covariates: bool = False) -> None:
         super().__init__(lazy=lazy)
         self._sample = sample
         self._array_conversion_batch_size = array_conversion_batch_size
         self._min_sequence_length = min_sequence_length
+        self.load_covariates = load_covariates
 
     @overrides
     def _read(self, file_path):
@@ -85,6 +87,7 @@ class VampireReader(DatasetReader):
         mat = load_sparse(file_path)
         # optionally sample the matrix
         mat = mat.tocsr()
+        
         if self._sample:
             indices = np.random.choice(range(mat.shape[0]), self._sample)
         else:

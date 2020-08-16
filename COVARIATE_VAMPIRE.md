@@ -39,5 +39,5 @@ python -m scripts.train \
             --config training_config/vampire.jsonnet \
             --serialization-dir model_logs/vampire \
             --environment VAMPIRE \
-            --device -1 --seed 42
+            --device -1 --seed 42 -o
 ```
