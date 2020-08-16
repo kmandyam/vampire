@@ -1,3 +1,4 @@
+import os
 import logging
 from typing import Dict, Union
 
@@ -10,7 +11,6 @@ from allennlp.data.instance import Instance
 from overrides import overrides
 from vampire.common.util import load_sparse
 from tqdm import tqdm
-
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -28,9 +28,9 @@ class SparseRowIndexer:
         # Iterating over the rows this way is significantly more efficient
         # than csr_matrix[row_index,:] and csr_matrix.getrow(row_index)
         for row_start, row_end in tqdm(zip(csr_matrix.indptr[:-1], csr_matrix.indptr[1:])):
-             data.append(csr_matrix.data[row_start:row_end])
-             indices.append(csr_matrix.indices[row_start:row_end])
-             indptr.append(row_end-row_start) # nnz of the row
+            data.append(csr_matrix.data[row_start:row_end])
+            indices.append(csr_matrix.indices[row_start:row_end])
+            indptr.append(row_end - row_start)  # nnz of the row
 
         self.data = np.array(data)
         self.indices = np.array(indices)
@@ -42,10 +42,10 @@ class SparseRowIndexer:
         indices = np.concatenate(self.indices[row_selector])
         indptr = np.append(0, np.cumsum(self.indptr[row_selector]))
 
-        shape = [indptr.shape[0]-1, self.n_columns]
+        shape = [indptr.shape[0] - 1, self.n_columns]
 
         return sparse.csr_matrix((data, indices, indptr), shape=shape)
-        
+
 @DatasetReader.register("vampire_reader")
 class VampireReader(DatasetReader):
     """
@@ -68,6 +68,7 @@ class VampireReader(DatasetReader):
         Only consider examples from data that are greater than
         the supplied minimum sequence length.
     """
+
     def __init__(self,
                  lazy: bool = False,
                  sample: int = None,
@@ -87,7 +88,14 @@ class VampireReader(DatasetReader):
         mat = load_sparse(file_path)
         # optionally sample the matrix
         mat = mat.tocsr()
-        
+
+        if self.load_covariates:
+            file_dir, file_name = os.path.split(file_path)
+            file_type = file_name.split('.', 1)[0]
+            covar_npz_path = os.path.join(file_dir, file_type + '.covar.npz')
+            covar_mat = load_sparse(covar_npz_path)
+            covar_mat = covar_mat.tocsr()
+
         if self._sample:
             indices = np.random.choice(range(mat.shape[0]), self._sample)
         else:
@@ -99,15 +107,30 @@ class VampireReader(DatasetReader):
         target_indices = [index for index in indices if seq_lengths[index] > self._min_sequence_length]
         logger.info("converting to array")
         target_indices_batches = batch(target_indices, n=self._array_conversion_batch_size)
-        for target_indices in tqdm(target_indices_batches, total=len(target_indices) // self._array_conversion_batch_size):
+
+        if self.load_covariates:
+            covar_indexer = SparseRowIndexer(covar_mat)
+
+        for target_indices in tqdm(target_indices_batches,
+                                   total=len(target_indices) // self._array_conversion_batch_size):
             rows = row_indexer[target_indices].toarray()
-            for row in rows:
-                instance = self.text_to_instance(vec=row)
+            if self.load_covariates:
+                covar_rows = covar_indexer[target_indices].toarray()
+                assert len(rows) == len(covar_rows)
+
+            for i in range(len(rows)):
+                row = rows[i]
+                if self.load_covariates:
+                    covar_row = covar_rows[i]
+                    instance = self.text_to_instance(vec=row, covar_vec=covar_row)
+                else:
+                    instance = self.text_to_instance(vec=row, covar_vec=None)
                 if instance is not None:
                     yield instance
 
     @overrides
-    def text_to_instance(self, vec: Union[np.ndarray, str] = None) -> Instance:  # type: ignore
+    def text_to_instance(self, vec: Union[np.ndarray, str] = None,
+                         covar_vec: Union[np.ndarray, str] = None) -> Instance:  # type: ignore
         """
         Parameters
         ----------
@@ -128,6 +151,8 @@ class VampireReader(DatasetReader):
         fields: Dict[str, Field] = {}
         if isinstance(vec, np.ndarray):
             fields['tokens'] = ArrayField(vec)
+            fields['covariates'] = ArrayField(covar_vec)
         else:
             fields['tokens'] = TextField(vec, {'tokens': SingleIdTokenIndexer(namespace='vampire')})
+            fields['covariates'] = TextField(vec, {'covariates': SingleIdTokenIndexer(namespace='covariates')})
         return Instance(fields)

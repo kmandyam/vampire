@@ -8,7 +8,7 @@ local BASE_READER(LAZY, SAMPLE, MIN_SEQUENCE_LENGTH) = {
   "sample": SAMPLE,
   "type": "vampire_reader",
   "min_sequence_length": MIN_SEQUENCE_LENGTH,
-  "load_covariates": false
+  "load_covariates": true
 };
 
 
