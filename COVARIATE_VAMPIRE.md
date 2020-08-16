@@ -23,7 +23,8 @@ python -m scripts.preprocess_data \
             --tokenize \
             --tokenizer-type spacy \
             --vocab-size 50000 \
-            --serialization-dir examples/toy
+            --serialization-dir examples/toy \
+            --preprocess-covariates True
 ```
 
 ## Step 4: Train VAMPIRE

@@ -14,9 +14,11 @@ from tqdm import tqdm
 
 from vampire.common.util import read_text, save_sparse, write_to_json
 
-METADATA = ['in_reply_to_status_id_str', 'in_reply_to_status_id', 'lang', 'source', 'in_reply_to_user_id_str',
-            'in_reply_to_screen_name', 'favorited', 'created_at', 'is_quote_status', 'in_reply_to_user_id',
-            'contributors', 'retweeted', 'place', 'favorite_count', 'retweet_count', 'truncated']
+# this list controls which metadata we want to use in vampire
+# NOTE: if you add a new item that is not already a string or doesn't make sense when cast to a Python string
+    # make sure you include special interpretation for each of those pieces of metadata
+METADATA = ['lang', 'in_reply_to_screen_name', 'favorited', 'created_at', 'is_quote_status',
+            'contributors', 'retweeted', 'favorite_count', 'retweet_count', 'truncated']
 
 def load_data(data_path: str, load_covars=False) -> Tuple[List[str], List[str]]:
     tokenized_examples = []
@@ -31,8 +33,13 @@ def load_data(data_path: str, load_covars=False) -> Tuple[List[str], List[str]]:
             tokenized_examples.append(text)
             if load_covars:
                 covariates = []
-                for c in METADATA:
-                    covariates.append(example[c])
+                for covar in METADATA:
+                    if covar == 'created_at':
+                        splt = example[covar].split(" ")
+                        covariates.extend(splt[0:3])
+                        covariates.append(splt[-1])
+                    else:
+                        covariates.append(str(example[covar]))
                 tokenized_covars.append(' '.join(covariates))
     return tokenized_examples, tokenized_covars
 
@@ -58,7 +65,7 @@ def main():
                         help="Path to store the preprocessed corpus vocabulary (output file name).")
     parser.add_argument("--reference-tokenizer-type", type=str, default="just_spaces",
                         help="Path to store the preprocessed corpus vocabulary (output file name).")
-    parser.add_argument("--preprocess-covariates", type=bool, default=True,
+    parser.add_argument("--preprocess-covariates", type=bool, default=False,
                         help="Whether we want to preprocess the metadata associated with each example")
     args = parser.parse_args()
 
@@ -81,13 +88,13 @@ def main():
     if args.tfidf:
         count_vectorizer = TfidfVectorizer(stop_words='english', max_features=args.vocab_size,
                                            token_pattern=r'\b[^\d\W]{3,30}\b')
-        covar_vectorizer = TfidfVectorizer(stop_words='english', max_features=args.vocab_size,
-                                           token_pattern=r'\b[^\d\W]{3,30}\b')
+        covar_vectorizer = TfidfVectorizer(max_features=args.vocab_size,
+                                           token_pattern=r'[\S]+')
     else:
         count_vectorizer = CountVectorizer(stop_words='english', max_features=args.vocab_size,
                                            token_pattern=r'\b[^\d\W]{3,30}\b')
-        covar_vectorizer = CountVectorizer(stop_words='english', max_features=args.vocab_size,
-                                           token_pattern=r'\b[^\d\W]{3,30}\b')
+        covar_vectorizer = CountVectorizer(max_features=args.vocab_size,
+                                           token_pattern=r'[\S]+')
 
     text = tokenized_train_examples + tokenized_dev_examples
 
