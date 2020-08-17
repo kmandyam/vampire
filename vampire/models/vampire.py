@@ -297,7 +297,6 @@ class VAMPIRE(Model):
         self.bow_bn.weight.requires_grad = False
 
         # Maintain these states for periodically printing topics and updating KLD
-
         initializer(self)
 
     def initialize_bg_from_file(self, file_: Optional[Path] = None) -> torch.Tensor:
@@ -375,7 +374,8 @@ class VAMPIRE(Model):
 
     @overrides
     def forward(self,  # pylint: disable=arguments-differ
-                tokens: Union[Dict[str, torch.IntTensor], torch.IntTensor]):
+                tokens: Union[Dict[str, torch.IntTensor], torch.IntTensor],
+                covariates: Union[Dict[str, torch.IntTensor], torch.IntTensor]):
         """
         Parameters
         ----------
@@ -391,7 +391,6 @@ class VAMPIRE(Model):
         """
         # For easy transfer to the GPU.
         self.device = self.vae.get_beta().device  # pylint: disable=W0201
-
         output_dict = {}
 
         if not self.training:

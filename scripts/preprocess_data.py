@@ -120,8 +120,8 @@ def main():
     if not args.reference_corpus_path:
         print("fitting reference corpus using development data...")
         reference_matrix = reference_vectorizer.fit_transform(tqdm(tokenized_dev_examples))
-        print("fitting reference corpus covariates using development data")
         if args.preprocess_covariates:
+            print("fitting reference corpus covariates using development data")
             reference_covariate_matrix = reference_covariate_vectorizer.fit_transform(tqdm(tokenized_dev_covariates))
     else:
         print(f"loading reference corpus at {args.reference_corpus_path}...")
