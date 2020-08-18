@@ -36,10 +36,16 @@ local LR_SCHEDULER =  {
          "vocab_namespace": "vampire",
          "ignore_oov": true
       },
+      "covar_embedder": {
+         "type": "bag_of_word_counts",
+         "vocab_namespace": "covariates",
+         "ignore_oov": true
+      },
       "reference_counts": std.extVar("REFERENCE_COUNTS"),
       "reference_vocabulary": std.extVar("REFERENCE_VOCAB"),
       "update_background_freq": std.parseInt(std.extVar("UPDATE_BACKGROUND_FREQUENCY")) == 1,
       "background_data_path": std.extVar("BACKGROUND_DATA_PATH"),
+      "covariate_background_data_path": std.extVar("COVARIATE_BACKGROUND_DATA_PATH"),
       "vae": {
          "z_dropout": std.extVar("Z_DROPOUT"),
          "kld_clamp": std.extVar("KLD_CLAMP"),
@@ -48,6 +54,12 @@ local LR_SCHEDULER =  {
             "hidden_dims": std.makeArray(std.parseInt(std.extVar("NUM_ENCODER_LAYERS")), function(i) std.parseInt(std.extVar("VAE_HIDDEN_DIM"))),
             "input_dim": std.parseInt(std.extVar("VOCAB_SIZE")) + 1,
             "num_layers": std.parseInt(std.extVar("NUM_ENCODER_LAYERS"))
+         },
+         "covariate_projection": {
+            "activations": "linear",
+            "hidden_dims": [std.parseInt(std.extVar("VAE_HIDDEN_DIM"))],
+            "input_dim": std.parseInt(std.extVar("COVARIATE_VOCAB_SIZE")) + 1,
+            "num_layers": 1
          },
          "mean_projection": {
             "activations": std.extVar("MEAN_PROJECTION_ACTIVATION"),
@@ -61,9 +73,27 @@ local LR_SCHEDULER =  {
             "input_dim": std.parseInt(std.extVar("VAE_HIDDEN_DIM")),
             "num_layers": std.parseInt(std.extVar("NUM_LOG_VAR_PROJECTION_LAYERS"))
          },
+         "covariate_mean_projection": {
+            "activations": std.extVar("MEAN_PROJECTION_ACTIVATION"),
+            "hidden_dims": std.makeArray(std.parseInt(std.extVar("NUM_MEAN_PROJECTION_LAYERS")), function(i) std.parseInt(std.extVar("VAE_HIDDEN_DIM"))),
+            "input_dim": std.parseInt(std.extVar("VAE_HIDDEN_DIM")),
+            "num_layers": std.parseInt(std.extVar("NUM_MEAN_PROJECTION_LAYERS"))
+         },
+        "covariate_log_variance_projection": {
+            "activations": std.extVar("LOG_VAR_PROJECTION_ACTIVATION"),
+            "hidden_dims": std.makeArray(std.parseInt(std.extVar("NUM_LOG_VAR_PROJECTION_LAYERS")), function(i) std.parseInt(std.extVar("VAE_HIDDEN_DIM"))),
+            "input_dim": std.parseInt(std.extVar("VAE_HIDDEN_DIM")),
+            "num_layers": std.parseInt(std.extVar("NUM_LOG_VAR_PROJECTION_LAYERS"))
+         },
          "decoder": {
             "activations": "linear",
             "hidden_dims": [std.parseInt(std.extVar("VOCAB_SIZE")) + 1],
+            "input_dim": std.parseInt(std.extVar("VAE_HIDDEN_DIM")),
+            "num_layers": 1
+         },
+         "covariate_decoder": {
+            "activations": "linear",
+            "hidden_dims": [std.parseInt(std.extVar("COVARIATE_VOCAB_SIZE")) + 1],
             "input_dim": std.parseInt(std.extVar("VAE_HIDDEN_DIM")),
             "num_layers": 1
          },

@@ -253,10 +253,12 @@ class VAMPIRE(Model):
     def __init__(self,
                  vocab: Vocabulary,
                  bow_embedder: TokenEmbedder,
+                 covar_embedder: TokenEmbedder,
                  vae: VAE,
                  reference_counts: Path = None,
                  reference_vocabulary: Path = None,
                  background_data_path: Path = None,
+                 covariate_background_data_path: Path = None,
                  update_background_freq: bool = False,
                  initializer: InitializerApplicator = InitializerApplicator(),
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
@@ -267,8 +269,11 @@ class VAMPIRE(Model):
         self.vocab = vocab
         self.vae = vae
         self.vocab_namespace = "vampire"
+        self.covariate_namespace = "covariates"
         self._update_background_freq = update_background_freq
-        self._background_freq = self.initialize_bg_from_file(file_=background_data_path)
+        self._background_freq = self.initialize_bg_from_file(file_=background_data_path, namespace=self.vocab_namespace)
+        self._covariate_background_freq = self.initialize_bg_from_file(file_=covariate_background_data_path,
+                                                                       namespace=self.covariate_namespace)
         self._reference_counts = reference_counts
         self._background_data_path = background_data_path
         self._reference_vocabulary = reference_vocabulary
@@ -290,16 +295,22 @@ class VAMPIRE(Model):
             self.n_docs = self._ref_count_mat.shape[0]
 
         vampire_vocab_size = self.vocab.get_vocab_size(self.vocab_namespace)
+        covariate_vocab_size = self.vocab.get_vocab_size(self.covariate_namespace)
         self._bag_of_words_embedder = bow_embedder
+        self._covariate_embedder = covar_embedder
         # setup batchnorm
         self.bow_bn = torch.nn.BatchNorm1d(vampire_vocab_size, eps=0.001, momentum=0.001, affine=True)
         self.bow_bn.weight.data.copy_(torch.ones(vampire_vocab_size, dtype=torch.float64))
         self.bow_bn.weight.requires_grad = False
 
+        self.bow_bn_covar = torch.nn.BatchNorm1d(covariate_vocab_size, eps=0.001, momentum=0.001, affine=True)
+        self.bow_bn_covar.weight.data.copy_(torch.ones(covariate_vocab_size, dtype=torch.float64))
+        self.bow_bn_covar.weight.requires_grad = False
+
         # Maintain these states for periodically printing topics and updating KLD
         initializer(self)
 
-    def initialize_bg_from_file(self, file_: Optional[Path] = None) -> torch.Tensor:
+    def initialize_bg_from_file(self, file_: Optional[Path] = None, namespace: Optional[str] = None) -> torch.Tensor:
         """
         Initialize the background frequency parameter from a file
 
@@ -308,7 +319,9 @@ class VAMPIRE(Model):
         ``file`` : str
             path to background frequency file
         """
-        background_freq = compute_background_log_frequency(self.vocab, self.vocab_namespace, file_)
+        if namespace is None:
+            namespace = self.vocab_namespace
+        background_freq = compute_background_log_frequency(self.vocab, namespace, file_)
         return torch.nn.Parameter(background_freq, requires_grad=self._update_background_freq)
 
     @staticmethod
@@ -396,32 +409,43 @@ class VAMPIRE(Model):
         if not self.training:
             self._kld_weight = 1.0  # pylint: disable=W0201
 
-
+        # import pdb; pdb.set_trace()
         # if you supply input as token IDs, embed them into bag-of-word-counts with a token embedder
         if isinstance(tokens, dict):
+            # TODO (karishma): fix this later
             if isinstance(tokens['tokens'], dict):
                 tokens = tokens['tokens']['tokens']
+                covariates = covariates['covariates']['tokens']
             else:
                 tokens = tokens['tokens']
+                covariates = covariates['covariates']
+
             embedded_tokens = (self._bag_of_words_embedder(tokens)
                                .to(device=self.device))
+            embedded_covariates = (self._covariate_embedder(covariates)
+                                  .to(device=self.device))
         else:
             embedded_tokens = tokens
+            embedded_covariates = covariates
         # Perform variational inference.
-        variational_output = self.vae(embedded_tokens)
+        variational_output = self.vae(embedded_tokens, embedded_covariates)
 
         # Reconstructed bag-of-words from the VAE with background bias.
         reconstructed_bow = variational_output['reconstruction'] + self._background_freq
+        reconstructed_covars = variational_output['covariate_reconstruction'] + self._covariate_background_freq
 
         # Apply batchnorm to the reconstructed bag of words.
         # Helps with word variety in topic space.
         reconstructed_bow = self.bow_bn(reconstructed_bow)
+        reconstructed_covars = self.bow_bn_covar(reconstructed_covars)
 
         # Reconstruction log likelihood: log P(x | z) = log softmax(z beta + b)
         reconstruction_loss = self.bow_reconstruction_loss(reconstructed_bow, embedded_tokens)
+        covar_reconstruction_loss = self.bow_reconstruction_loss(reconstructed_covars, embedded_covariates)
+        reconstruction_loss += covar_reconstruction_loss
 
         # KL-divergence that is returned is the mean of the batch by default.
-        negative_kl_divergence = variational_output['negative_kl_divergence']
+        negative_kl_divergence = variational_output['negative_kl_divergence'] + variational_output['covar_negative_kl_divergence']
 
         # Compute ELBO
         elbo = negative_kl_divergence * self._kld_weight + reconstruction_loss
